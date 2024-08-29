@@ -1,11 +1,11 @@
 SET set_date = '2025-02-23';
 
 --Change to your tmp table
-SET sku_store_list = 'AAP_DAT_PROD_DB.DAT_WRKSPCE.TMP_AD_BRAT_STORE_SKU_LIST';
+SET id_store_list = 'pdb2.DAT_WRKSPCE.TMP_AD_STORE_ID_LIST';
 
 
 
-WITH store_scpo_eligibility as (
+WITH cte1 as (
 
      Select
 
@@ -18,8 +18,8 @@ WITH store_scpo_eligibility as (
         ,mst.servicing_rdc
         ,mst.servicing_pdc
         
-        ,dfs.item as sku_number_ent
-        ,msk.sku_number_aap
+        ,dfs.item as obj_id_number_ent
+        ,msk.obj_id_number_aap
 
         ,msk.item_status
         ,msk.mpog_description
@@ -39,12 +39,12 @@ WITH store_scpo_eligibility as (
             when dfs.u_end_date <= current_date() then 'PAST'
          end as eligibility_type
         
-    From aap_idm_prod_db.demand_fullfillment.sku dfs
+    From pdb1.db3.sku dfs
 
-    Left Join aap_dat_prod_db.db1.vw_master_sku msk on
-        msk.sku_number_ent = dfs.item
+    Left Join pdb2.db1.vw_master_sku msk on
+        msk.obj_id_number_ent = dfs.item
 
-    Left Join aap_dat_prod_db.db1.vw_master_store mst on
+    Left Join pdb2.db1.vw_master_store mst on
         mst.store_number_ent = dfs.loc
         
     Where
@@ -54,7 +54,7 @@ WITH store_scpo_eligibility as (
 
 ),
 
-dc_scpo_eligibility as (
+cte2 as (
 
     Select
 
@@ -62,8 +62,8 @@ dc_scpo_eligibility as (
         ,byd.legacy_aap_dc_number as dc_number_aap
         ,dc.loctn_abbrvtn as dc_abbrv
         
-        ,dfs.item as sku_number_ent
-        ,try_to_number(dfs.item) as sku_number_aap
+        ,dfs.item as obj_id_number_ent
+        ,try_to_number(dfs.item) as obj_id_number_aap
 
         ,case 
             when scf.sku is not null and date(scf.activation_timestamp) <= current_date() then 'Y'
@@ -72,9 +72,9 @@ dc_scpo_eligibility as (
          end as intrepid_converted_flag
         
         ,itm.u_item_status as df_item_status
-        ,itm_dtls.item_stts as it_item_status
+        ,t5.item_stts as it_item_status
 
-        ,itm_dtls.mpog_desc as intrepid_mpog
+        ,t5.mpog_desc as intrepid_mpog
         ,sd.mpog_description as dat_mpog
         ,sd.mpog_id as dat_mpog_id
 
@@ -94,27 +94,27 @@ dc_scpo_eligibility as (
             when dfs.u_end_date <= current_date() then 'PAST'
          end as eligibility_type
 
-    From aap_idm_prod_db.demand_fullfillment.sku dfs
+    From pdb1.db3.sku dfs
 
-    LEFT JOIN aap_idm_prod_db.demand_fullfillment.item itm on
+    LEFT JOIN pdb1.db3.item itm on
         itm.item = dfs.item
 
-    LEFT JOIN aap_idm_prod_db.item_bv.v_item_dtls_curr itm_dtls on
-        itm_dtls.sku = dfs.item
+    LEFT JOIN pdb1.db4.table5 t5 on
+        t5.sku = dfs.item
 
-    LEFT JOIN aap_dat_prod_db.location.vw_blue_yonder_dc_mapping byd on
+    LEFT JOIN pdb2.db5.table6 byd on
         byd.blue_yonder_loc =  dfs.loc
 
-    LEFT JOIN aap_idm_prod_db.location_bv.v_ent_location_dtls_curr dc on
+    LEFT JOIN pdb1.db5.table7 dc on
         dc.ent_loctn_nbr = dfs.loc
 
-    LEFT JOIN aap_dat_prod_db.product.vw_sku_data sd on
-        lpad(sd.sku_number,8,0) = dfs.item
+    LEFT JOIN pdb2.db6.table8 sd on
+        lpad(sd.obj_id_number,8,0) = dfs.item
 
-    Left Join aap_dat_prod_db.product.vw_sku_base_product_group sbpg on
-        lpad(sbpg.sku_number,8,0) = dfs.item
+    Left Join pdb2.db6.table9 sbpg on
+        lpad(sbpg.obj_id_number,8,0) = dfs.item
 
-    Left Join aap_dat_prod_db.dat_bv.skucatfil scf on
+    Left Join pdb2.db2.table10 scf on
         lpad(scf.sku,8,0) = dfs.item
         
     Where
@@ -132,7 +132,7 @@ sku_store_status AS(
 
 SELECT 
     sl.aap_store_number
-    ,sl.aap_sku_number
+    ,sl.comp_obj_id_number
     ,dm.is_replenishing as is_eligible
     ,dm.future_start_date
     ,dm.topsku_future_add
@@ -165,7 +165,7 @@ FROM IDENTIFIER($sku_store_list) sl
 
 
 LEFT JOIN db1.vw_sku_store_detail_merged dm
-    on dm.aap_sku_number = sl.aap_sku_number
+    on dm.comp_obj_id_number = sl.comp_obj_id_number
     and dm.aap_store_number = sl.aap_store_number
 
     
@@ -174,28 +174,28 @@ LEFT JOIN db1.vw_master_store ms
     ---###store_number_ent 
 
 
-LEFT JOIN dat_bv.sku_data sd   
-    on sl.aap_sku_number = sd.sku_number
+LEFT JOIN db2.sku_data sd   
+    on sl.comp_obj_id_number = sd.obj_id_number
 
     
-LEFT JOIN dat_bv.SKU_EXCLUSION_DETAIL e
-    on e.sku_number = sl.aap_sku_number
+LEFT JOIN db2.SKU_EXCLUSION_DETAIL e
+    on e.obj_id_number = sl.comp_obj_id_number
     and e.store_number = sl.aap_store_number
 
     
-LEFT JOIN aap_dat_prod_db.dat_bv.replenishable_store_sku r
-    on sl.aap_sku_number = r.sku_number
+LEFT JOIN pdb2.db2.replenishable_store_sku r
+    on sl.comp_obj_id_number = r.obj_id_number
     and sl.aap_store_number = r.store_number
 
     
 
-LEFT JOIN store_scpo_eligibility scpo
-    on scpo.sku_number_aap = sl.aap_sku_number
+LEFT JOIN cte1 scpo
+    on scpo.obj_id_number_aap = sl.comp_obj_id_number
     and scpo.store_number_aap = sl.aap_store_number
 
     
-LEFT JOIN dc_scpo_eligibility dc
-    on dc.sku_number_aap = sl.aap_sku_number
+LEFT JOIN cte2 dc
+    on dc.obj_id_number_aap = sl.comp_obj_id_number
     and dc.dc_number_aap = sl.dc_number
 
     
@@ -205,7 +205,7 @@ LEFT JOIN dc_scpo_eligibility dc
 
 SELECT 
     aap_store_number
-    ,aap_sku_number
+    ,comp_obj_id_number
 
     ,is_eligible
     ,future_start_date
